@@ -54,16 +54,16 @@ void main(List<String> arguments) {
     if (results.wasParsed('verbose')) {
       verbose = true;
     }
-    if (results.wasParsed('renew')) {
-      final directory = Directory.current; // 获取当前目录
-      logInfo('Scanning directory: ${directory.path}');
-      processDirectory(directory);
-    }
-
     // Act on the arguments provided.
     logInfo('Positional arguments: ${results.rest}');
     if (verbose) {
       logInfo('[VERBOSE] All arguments: ${results.arguments}');
+    }
+
+    if (results.rest.contains('renew')) {
+      final directory = Directory.current; // 获取当前目录
+      logInfo('Scanning directory: ${directory.path}');
+      processDirectory(directory);
     }
   } on FormatException catch (e) {
     // Print usage information if an invalid argument was provided.
