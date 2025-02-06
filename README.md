@@ -1,1 +1,2 @@
-# flutter_renewfile
+ dart cli 工具:
+ 遍历目录所有文件夹，将 每个文件下的每一个.dart文件里的内容拷贝，然后粘贴到新建同名的.dart文件里
