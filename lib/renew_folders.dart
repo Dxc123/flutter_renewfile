@@ -1,6 +1,5 @@
 import 'dart:io';
-
-import 'package:path/path.dart' as p;
+import "package:path/path.dart" as p;
 
 void renewFolders() async {
   try {
