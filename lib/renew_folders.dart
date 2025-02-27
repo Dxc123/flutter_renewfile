@@ -1,60 +1,133 @@
 import 'dart:io';
 
-import 'package:flutter_renewfile/log_untls.dart';
+import 'package:path/path.dart' as p;
 
-
-
-Future<void> renewFolders() async {
-  final directory = Directory.current; // 获取当前目录
-  logInfo('Scanning directory: ${directory.path}');
-
+void renewFolders() async {
   try {
-    // 获取目录下的所有子文件夹
-    List<Directory> subDirs = [];
-    await for (var entity in directory.list(recursive: false)) {
-      if (entity is Directory) {
-        subDirs.add(entity);
-      }
-    }
+    final stopwatch = Stopwatch()..start();
+    final currentDir = Directory.current;
+    printInfo('🚀 Starting directory processing...');
 
-    // 处理每个文件夹
-    for (var dir in subDirs) {
-      logInfo('Processing directory: ${dir.path}');
-      String newDirPath = '${dir.path}_new';
-      Directory newDir = Directory(newDirPath);
+    // Step 1: 递归收集所有目录
+    printInfo('📂 Collecting directories...');
+    final oldDirs = await _listDirectoriesRecursively(currentDir);
+    printSuccess('✅ Found ${oldDirs.length} directories');
 
-      // 如果目标文件夹不存在，创建新文件夹
-      if (!await newDir.exists()) {
-        await newDir.create(recursive: true);
-        logInfo('Created new directory: $newDirPath');
-      }
+    // Step 2: 创建新目录
+    printInfo('🛠 Creating new directories...');
+    final dirMap = _createDirectoryMap(oldDirs);
+    await _createDirectories(dirMap.values);
+    printSuccess('✅ Created ${dirMap.length} new directories');
 
-      // 创建对应的子文件夹
-      await for (var entity in dir.list(recursive: false)) {
-        if (entity is File) {
-          // 为每个文件创建对应的新文件夹
-          String fileName = entity.uri.pathSegments.last;
-          File newFile = File('${newDir.path}/$fileName');
-          await entity.copy(newFile.path);
-          logInfo('Moved file: ${entity.path} to ${newFile.path}');
-        }
-      }
+    // Step 3: 移动文件
+    printInfo('🚚 Moving files...');
+    final files = await _listFilesRecursively(currentDir);
+    await _moveFiles(files, dirMap);
+    printSuccess('✅ Moved ${files.length} files');
 
-      // 删除原文件夹和文件
-      await dir.delete(recursive: true);
-      logInfo('Deleted original directory: ${dir.path}');
-    }
+    // Step 4: 删除旧目录
+    printInfo('🗑 Deleting old directories...');
+    await _deleteDirectories(dirMap.keys);
+    printSuccess('✅ Deleted ${dirMap.length} old directories');
 
-    // 重命名新文件夹
-    for (var dir in subDirs) {
-      String oldDirPath = dir.path;
-      String newDirPath = '${oldDirPath}_new';
-      if (Directory(newDirPath).existsSync()) {
-        await Directory(newDirPath).rename(oldDirPath);
-        logInfo('Renamed new folder: $newDirPath to $oldDirPath');
-      }
-    }
+    // Step 5: 重命名新目录
+    printInfo('🏷 Renaming directories...');
+    await _renameDirectories(dirMap.values.toList());
+    printSuccess('✅ Renaming completed');
+
+    stopwatch.stop();
+    printSuccess('\n🎉 All operations completed in ${stopwatch.elapsed}');
   } catch (e) {
-    logError('Error processing directory: $e');
+    printError('❌ Critical error: $e');
+    exitCode = 1;
   }
 }
+
+// 辅助函数
+Map<String, String> _createDirectoryMap(List<Directory> directories) {
+  final map = <String, String>{};
+  for (final dir in directories) {
+    final oldPath = dir.path;
+    final newPath = p.joinAll(p.split(oldPath).map((part) => '${part}_new').toList());
+    map[oldPath] = newPath;
+  }
+  return map;
+}
+
+Future<void> _createDirectories(Iterable<String> paths) async {
+  await Future.wait(paths.map((path) async {
+    try {
+      await Directory(path).create(recursive: true);
+      printSuccess('  Created: $path');
+    } catch (e) {
+      printError('  Failed to create $path: $e');
+    }
+  }));
+}
+
+Future<void> _moveFiles(List<File> files, Map<String, String> dirMap) async {
+  await Future.wait(files.map((file) async {
+    try {
+      final oldPath = file.path;
+      final oldDir = p.dirname(oldPath);
+      final newDir = dirMap[oldDir]!;
+      final newPath = p.join(newDir, p.basename(oldPath));
+
+      await file.rename(newPath);
+      printSuccess('  Moved: $oldPath → $newPath');
+    } catch (e) {
+      printError('  Failed to move ${file.path}: $e');
+    }
+  }));
+}
+
+Future<void> _deleteDirectories(Iterable<String> paths) async {
+  await Future.wait(paths.map((path) async {
+    try {
+      await Directory(path).delete(recursive: true);
+      printSuccess('  Deleted: $path');
+    } catch (e) {
+      printError('  Failed to delete $path: $e');
+    }
+  }));
+}
+
+Future<void> _renameDirectories(List<String> newPaths) async {
+  final sortedPaths = List.of(newPaths)..sort((a, b) => p.split(b).length.compareTo(p.split(a).length));
+
+  for (final newPath in sortedPaths) {
+    try {
+      final targetPath = p.joinAll(p.split(newPath).map((part) => part.replaceAll(RegExp(r'_new$'), '')).toList());
+      await Directory(newPath).rename(targetPath);
+      printSuccess('  Renamed: $newPath → $targetPath');
+    } catch (e) {
+      printError('  Failed to rename $newPath: $e');
+    }
+  }
+}
+
+// 文件/目录遍历
+Future<List<Directory>> _listDirectoriesRecursively(Directory dir) async {
+  final directories = <Directory>[];
+  final entities = dir.list(recursive: true);
+  await for (final entity in entities) {
+    if (entity is Directory) directories.add(entity);
+  }
+  return directories;
+}
+
+Future<List<File>> _listFilesRecursively(Directory dir) async {
+  final files = <File>[];
+  final entities = dir.list(recursive: true);
+  await for (final entity in entities) {
+    if (entity is File) files.add(entity);
+  }
+  return files;
+}
+
+// 颜色输出
+void printSuccess(String message) => print('\x1B[32m$message\x1B[0m');
+
+void printError(String message) => print('\x1B[31m$message\x1B[0m');
+
+void printInfo(String message) => print('\x1B[34m$message\x1B[0m');
