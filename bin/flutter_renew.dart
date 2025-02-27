@@ -64,7 +64,7 @@ void main(List<String> arguments) {
 
     if (results.rest.contains('files')) {
       renewFiles();
-    }else if (results.rest.contains('folders')) {
+    }else if (results.rest.contains('folders'))  {
       renewFolders();
     }else{
       logError('Invalid command. Use "files" or "folders".');

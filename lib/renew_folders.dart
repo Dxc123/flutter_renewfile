@@ -5,97 +5,82 @@ import 'package:flutter_renewfile/log_untls.dart';
 Future<void> renewFolders() async {
   final dir = Directory.current; // 获取当前目录
   logInfo('Scanning directory: ${dir.path}');
-  printLog('开始处理目录: ${dir.path}', LogLevel.info);
+  logInfo('开始处理目录: ${dir.path}');
+  try {
+    // 获取目录下的所有文件和子目录
+    List<Future> tasks = [];
 
-  final entities = dir.listSync(recursive: true); // 递归列出所有文件和文件夹
-  for (var entity in entities) {
-    if (entity is Directory) {
-      final newDirPath = '${entity.path}_new';
-      final newDir = Directory(newDirPath);
+    await for (var entity in dir.list(recursive: true)) {
+      if (entity is Directory) {
+        // 为每个目录创建新的目录（带 "_new" 后缀）
+        String newDirPath = '${entity.path}_new';
+        Directory newDir = Directory(newDirPath);
 
-      try {
-        if (!newDir.existsSync()) {
-          newDir.createSync(); // 创建新文件夹
-          printLog('创建新文件夹: $newDirPath', LogLevel.success);
+        // 如果新目录不存在，则创建它
+        if (!await newDir.exists()) {
+          tasks.add(newDir.create(recursive: true).then((_) {
+            logInfo('Created new folder: $newDirPath');
+          }));
         }
 
-        await moveFiles(entity, newDir); // 移动文件到新文件夹
-        await removeOldDir(entity); // 删除旧文件夹
-        await renameNewDir(newDir); // 重命名新文件夹
-      } catch (e) {
-        printLog('处理目录 ${entity.path} 时出错: $e', LogLevel.error);
+        // 递归处理子目录中的文件，并将任务添加到列表
+        tasks.add(moveFilesFromOldToNew(entity, newDir));
       }
     }
+
+    // 等待所有任务完成
+    await Future.wait(tasks);
+
+    // 删除旧文件夹并重命名新文件夹
+    await deleteOldAndRenameNewFolder(dir);
+
+  } catch (e) {
+    logInfo('Error processing directory ${dir.path}: $e');
   }
 }
 
-Future<void> moveFiles(Directory oldDir, Directory newDir) async {
-  final files = oldDir.listSync();
-  for (var file in files) {
-    if (file is File) {
-      try {
-        final newFile = File('${newDir.path}/${file.uri.pathSegments.last}');
-        file.renameSync(newFile.path); // 移动文件
-        printLog('移动文件: ${file.path} 到 ${newFile.path}', LogLevel.success);
-      } catch (e) {
-        printLog('文件移动失败: ${file.path} -> $e', LogLevel.error);
+Future<void> moveFilesFromOldToNew(Directory oldDir, Directory newDir) async {
+  try {
+    List<Future> moveTasks = [];
+
+    await for (var entity in oldDir.list()) {
+      if (entity is File) {
+        String newFilePath = '${newDir.path}/${entity.uri.pathSegments.last}';
+        // File newFile = File(newFilePath);
+
+        // 将文件移动操作添加到任务列表
+        moveTasks.add(entity.rename(newFilePath).then((_) {
+          logSuccess('Moved file: ${entity.path} to $newFilePath');
+        }));
       }
     }
+
+    // 等待所有文件移动任务完成
+    await Future.wait(moveTasks);
+  } catch (e) {
+    logError('Error moving files in ${oldDir.path}: $e');
   }
 }
 
-Future<void> removeOldDir(Directory oldDir) async {
+Future<void> deleteOldAndRenameNewFolder(Directory oldDir) async {
   try {
-    final files = oldDir.listSync();
-    if (files.isEmpty) {
-      oldDir.deleteSync(); // 删除空文件夹
-      printLog('删除文件夹: ${oldDir.path}', LogLevel.success);
+    // 删除原目录
+    await oldDir.delete(recursive: true);
+    logSuccess('Deleted old folder: ${oldDir.path}');
+
+    // 重命名新文件夹
+    String newDirPath = '${oldDir.path}_new';
+    Directory newDir = Directory(newDirPath);
+    String finalDirPath = oldDir.path;
+
+    // 确保新目录存在并进行重命名
+    if (await newDir.exists()) {
+      await newDir.rename(finalDirPath);
+      logSuccess('Renamed folder to: $finalDirPath');
+    } else {
+      logError('Error: New folder does not exist.');
     }
   } catch (e) {
-    printLog('删除文件夹失败: ${oldDir.path} -> $e', LogLevel.error);
+    logError('Error deleting or renaming folder: $e');
   }
 }
-
-Future<void> renameNewDir(Directory newDir) async {
-  try {
-    final newDirPath = newDir.path.replaceAll('_new', '');
-    newDir.renameSync(newDirPath); // 重命名文件夹
-    printLog('重命名文件夹: ${newDir.path} -> $newDirPath', LogLevel.success);
-  } catch (e) {
-    printLog('重命名文件夹失败: ${newDir.path} -> $e', LogLevel.error);
-  }
-}
-
-void printLog(String message, LogLevel level) {
-  final color = _getLogColor(level);
-  final levelStr = _getLogLevelString(level);
-  print('$color[$levelStr] $message\x1B[0m');
-}
-
-String _getLogColor(LogLevel level) {
-  switch (level) {
-    case LogLevel.info:
-      return '\x1B[34m'; // 蓝色
-    case LogLevel.success:
-      return '\x1B[32m'; // 绿色
-    case LogLevel.error:
-      return '\x1B[31m'; // 红色
-    default:
-      return '\x1B[37m'; // 默认颜色
-  }
-}
-
-String _getLogLevelString(LogLevel level) {
-  switch (level) {
-    case LogLevel.info:
-      return 'INFO';
-    case LogLevel.success:
-      return 'SUCCESS';
-    case LogLevel.error:
-      return 'ERROR';
-    default:
-      return 'UNKNOWN';
-  }
-}
-
-enum LogLevel { info, success, error }
