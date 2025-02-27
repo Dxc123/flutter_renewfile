@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_renewfile/log_untls.dart';
 
-void renewFolders() {
+Future<void> renewFolders() async {
   final dir = Directory.current; // 获取当前目录
   logInfo('Scanning directory: ${dir.path}');
   printLog('开始处理目录: ${dir.path}', LogLevel.info);
@@ -19,9 +19,9 @@ void renewFolders() {
           printLog('创建新文件夹: $newDirPath', LogLevel.success);
         }
 
-        moveFiles(entity, newDir); // 移动文件到新文件夹
-        removeOldDir(entity); // 删除旧文件夹
-        renameNewDir(newDir); // 重命名新文件夹
+        await moveFiles(entity, newDir); // 移动文件到新文件夹
+        await removeOldDir(entity); // 删除旧文件夹
+        await renameNewDir(newDir); // 重命名新文件夹
       } catch (e) {
         printLog('处理目录 ${entity.path} 时出错: $e', LogLevel.error);
       }
@@ -29,7 +29,7 @@ void renewFolders() {
   }
 }
 
-void moveFiles(Directory oldDir, Directory newDir) {
+Future<void> moveFiles(Directory oldDir, Directory newDir) async {
   final files = oldDir.listSync();
   for (var file in files) {
     if (file is File) {
@@ -44,7 +44,7 @@ void moveFiles(Directory oldDir, Directory newDir) {
   }
 }
 
-void removeOldDir(Directory oldDir) {
+Future<void> removeOldDir(Directory oldDir) async {
   try {
     final files = oldDir.listSync();
     if (files.isEmpty) {
@@ -56,7 +56,7 @@ void removeOldDir(Directory oldDir) {
   }
 }
 
-void renameNewDir(Directory newDir) {
+Future<void> renameNewDir(Directory newDir) async {
   try {
     final newDirPath = newDir.path.replaceAll('_new', '');
     newDir.renameSync(newDirPath); // 重命名文件夹
