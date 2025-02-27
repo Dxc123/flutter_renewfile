@@ -19,3 +19,4 @@ dev_dependencies:
 # 配置标识为包的可执行文件
 executables:
   flutter_renewfile: flutter_renewfile
+  renew: renew
